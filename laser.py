@@ -32,6 +32,9 @@ import yaml
 import timeit
 import argparse
 
+if cv2.__version__.startswith("3."):
+    cv2.CV_AA = cv2.LINE_AA
+    
 # Global debugging variable
 gdebug = True
 
@@ -293,7 +296,10 @@ def laserShape(diff, maxLoc, threshold, maxRadius=100, debug=True):
     # flag FLOODFILL_MASK_ONLY.
     seed = maxRadius + min(0, left), maxRadius +  min(0, top)
     printd ("Seed = " + str(seed))
-    retval, rect = cv2.floodFill(crop, mask, seed, 125, lowDiff, 255, cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | 4 | ( 255 << 8 ) )
+    if cv2.__version__.startswith("3."):
+        retval, _, mask, rect = cv2.floodFill(crop, mask, seed, 125, lowDiff, 255, cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | 4 | ( 255 << 8 ) )
+    else:
+        retval, rect = cv2.floodFill(crop, mask, seed, 125, lowDiff, 255, cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | 4 | ( 255 << 8 ) )
     if debug:
         print ("floodFill retval (#of filled pixels) = " + str(retval))
         (rx,ry,rw,rh) = rect
