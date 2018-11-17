@@ -12,7 +12,18 @@ It includes a calibration utility and a demo program.
 To launch the demo with webcam device #1:
 ```python ./laser.py -camera 1```
 
-![LAZER](https://github.com/sanette/laser/blob/master/lazer.png)
+![LAZER](https://github.com/sanette/laser/blob/master/lazer.png) 
+
+The code contains extensive debugging information that will be displayed if you use the "-d" flag.
+```
+usage: laser.py [-h] [-d] [-c CAMERA]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d, --debug           set debug mode
+  -c CAMERA, --camera CAMERA
+                        set camera device id
+```
 
 ## Requirements
 
