@@ -27,12 +27,10 @@ The detection is based on an original algorithm, which combines a 'traditional' 
 
 Detecting laser dots is not a new subject. Several algorithms exist, but none of them is optimal. See for instance a review paper here: http://www.jatit.org/volumes/Vol70No2/18Vol70No2.pdf
 
-The approach that I use is adapted to a situation were the laser dot is projected on a still surface, with stable lighting conditions. Typically, it should work indoors, eg. in a seminar room when the laser is used as a pointer for a computer presentation with a videoprojector.
+The approach that I use is adapted to a situation were the laser dot is projected on a still background, with stable lighting conditions. Typically, it should work indoors, eg. in a seminar room when the laser is used as a pointer for a computer presentation with a videoprojector.
 
 In further versions I will try to add more geometric conditions to make the detection even more robust.
 
 ## Calibration
 
 There are default values that should work out-of-the-box, but for better results, I recommend running the calibration function.
-
-![Calibration](https://github.com/sanette/laser/blob/master/screenshot01.png)
