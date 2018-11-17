@@ -57,13 +57,11 @@ def printd(s):
 
 def printTime(s, t0, thr=0.0001):
     global gdebug
-    if gdebug:
-        t = timeit.default_timer() - t0
-        if t >= thr:
-            print ("TIME " + s + " = " + str(t))
-        return (t)
-    else:
-        return (0)
+    t = timeit.default_timer() - t0
+    if gdebug and t >= thr:
+        print ("TIME " + s + " = " + str(t))
+    return (t)
+
 
 # At the heart of the algorithm we use background signed substraction for a
 # fast "motion" detector.
@@ -185,6 +183,7 @@ class Snake:
         self.points = np.zeros((snakeMaxSize,1,2), dtype=int)
         # we start from the end of the array... don't ask why.
         self.size = 0
+        self.active = False # is the light on?
         
     def visible(self):
         """return the visible part"""
@@ -252,8 +251,9 @@ class Snake:
         if self.size != 0:
             cv2.polylines(image, [self.visible()], False, snakeColor, 2,
                           cv2.CV_AA)
-            p = self.last()
-            cv2.circle(image, (p[0], p[1]), 5, snakeColor, -1, cv2.CV_AA)
+            if self.active:
+                p = self.last()
+                cv2.circle(image, (p[0], p[1]), 5, snakeColor, -1, cv2.CV_AA)
 
 # Here we detect "global motion", which is when we think the change in the
 # image is too important to be due to the laser pointer.
@@ -327,7 +327,6 @@ def getProbes(cam, nProbes, clipBox, console, drawFn=None):
     background = []
     cal = Calibration(cam)
     snake = Snake(nProbes-1)
-    active = False
     printd ("Please wait...")
     for i in range(nProbes):
         img = readCam(cam)
@@ -337,7 +336,7 @@ def getProbes(cam, nProbes, clipBox, console, drawFn=None):
         if drawFn != None:
             drawFn(show)
         _ = cv2.waitKey(10)
-        background, mask, active, maxVal = oneStepTracker(background, img, show, clipBox, snake, active, cal)
+        background, mask, maxVal = oneStepTracker(background, img, show, clipBox, snake, cal)
         if i != 0:
             vals.append(maxVal)
         console.show_image(show)
@@ -641,12 +640,12 @@ def plotVal(show, candidate, color=valColor, thickness=1):
     cv2.circle(show, (x,y), size, color, thickness, cv2.CV_AA)
 
 # This is the main detection function
-def oneStepTracker(background, img, show, clipBox, snake, active, cal):
+def oneStepTracker(background, img, show, clipBox, snake, cal):
     global gdebug
     mask = []
     
     if background == []:
-        return (img, mask, active, 0)
+        return (img, mask, 0)
     
     printd ("/------------------- new image --------------------\\")
     diff, maxVal, maxLoc = diffMax(background, img, cal.laserDiameter/2)
@@ -675,7 +674,7 @@ def oneStepTracker(background, img, show, clipBox, snake, active, cal):
                 printd (c)
                 plotVal(show, c)
 
-        if active:
+        if snake.active:
             # distance from last recorded point
             d = np.linalg.norm(maxLoc - snake.last())
             printd ("Distance = " + str(d))
@@ -683,7 +682,8 @@ def oneStepTracker(background, img, show, clipBox, snake, active, cal):
             # is the new point far from predicted?
             p = snake.predict()
             printd ("Predicted = " + str(p))
-            cv2.circle(show, (p[0], p[1]), 10, predictedColor, 1) 
+            if gdebug:
+                cv2.circle(show, (p[0], p[1]), 10, predictedColor, 1) 
             dd =  np.linalg.norm(p - maxLoc)
             printd ("Deviation from prediction = " + str(dd))
         else:
@@ -691,7 +691,7 @@ def oneStepTracker(background, img, show, clipBox, snake, active, cal):
             d = cal.jitterDist
 
         # We select the candidate with the best score
-        best, score = bestPixel(candidates, active, snake.size, cal.jitterDist, cal.laserIntensity, deviation=dd)
+        best, score = bestPixel(candidates, snake.active, snake.size, cal.jitterDist, cal.laserIntensity, deviation=dd)
         printd ("SCORE = " + str(score))
 
         if gdebug:
@@ -712,8 +712,8 @@ def oneStepTracker(background, img, show, clipBox, snake, active, cal):
         else:
             printd ("Nothing found.")
 
-    active = newPoint
-    if (not active) and snake.size > 0:
+    snake.active = newPoint
+    if (not snake.active) and snake.size > 0:
         snake.remove()
 
     printd ("Snake size = " + str(snake.size))
@@ -722,7 +722,7 @@ def oneStepTracker(background, img, show, clipBox, snake, active, cal):
     else:
         background = img
 
-    return (background, mask, active, maxVal)
+    return (background, mask, maxVal)
 
 def calibrateLoop(cam, console):
     """Repeat calibration until successful"""
@@ -766,31 +766,20 @@ def webcamTracker(cameraId, debug):
     # in order to detect laser motion.
     
     snake = Snake(snakeMaxSize)
-
-    active = False # The 'active' variable will be set to true when the laser
-                   # is on.
+    dt = 0
     if debug:
         cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
     print "Press 'q' to exit"
     print "Press 'd' to toggle debugging"
     while True:        
         # Retrieve an image and Display it.
-        img = readCam(cam)
-        key = cv2.waitKey(4)
-        if key == ord('q'):
-            break
-        if key == ord('d'):
-            gdebug = not gdebug
-            if gdebug:
-                cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
-            else:
-                cv2.destroyWindow(laserWindow)
-                
+        t1 = timeit.default_timer()
+        img = readCam(cam)                
         show = img.copy() # this is the console image where we can draw.
 
         # THIS IS THE MAIN DETECTION STEP:
         t0 = timeit.default_timer()
-        background, mask, active, _ = oneStepTracker(background, img, show, clipBox, snake, active, cal)
+        background, mask, _ = oneStepTracker(background, img, show, clipBox, snake, cal)
         printTime("One Step", t0)
         
         if mask != []:
@@ -799,8 +788,21 @@ def webcamTracker(cameraId, debug):
         # We display the active status in the console.
         console.reset()
         console.write ("q = quit;  d = toggle debug mode")
-        console.write ("active = " + str(active))
+        console.write ("active = " + str(snake.active))
         console.show_image(show)
+        dt = int(1000 * printTime("total", t1))
+        print (dt)
+        
+        key = cv2.waitKey(max(17-dt, 2))
+        if key == ord('q'):
+            break
+        if key == ord('d'):
+            gdebug = not gdebug
+            if gdebug:
+                cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
+            else:
+                cv2.destroyWindow(laserWindow)
+
         
     console.close()
 
@@ -811,7 +813,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action="store_true",
                         help="set debug mode")
-    parser.add_argument("-c", "--camera", type=int, help="set camera id")
+    parser.add_argument("-c", "--camera", type=int, help="set camera device id")
     args = parser.parse_args()
     debug = args.debug
     cameraId = args.camera
