@@ -3,7 +3,9 @@ Laser pointer tracker
 
 **laser** is a small library to detect the light beam of a laser pointer using a plain webcam.
 
-It also works with other types of focused lights (some flashlights can adjust the size of the beam)
+It also works with other types of focused lights (some flashlights can adjust the size of the beam).
+
+It works on any kind of non-moving background (it doesn't have to be white, or even uniform).
 
 It includes a calibration utility and a demo program.
 
