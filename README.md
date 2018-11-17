@@ -27,7 +27,7 @@ optional arguments:
 
 ## Requirements
 
-python 2 and opencv 2.4 (these are the default packages in ubuntu 16)
+python 2 and opencv 2.4 (these are the default packages in ubuntu 16), or opencv 3.0 (or higher) (ubuntu 18).
 ```
   sudo apt install python-opencv
   sudo apt install python-yaml
