@@ -33,4 +33,4 @@ In further versions I will try to add more geometric conditions to make the dete
 
 There are default values that should work out-of-the-box, but for better results, I recommend running the calibration function.
 
-![Calibration](https://github.com/sanette/laser/blob/master/screenshot02.png)
+![Calibration](https://github.com/sanette/laser/blob/master/screenshot01.png)
