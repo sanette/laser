@@ -24,6 +24,8 @@
 
 # This version uses python2 and opencv 2.4
 
+# THANK YOU stackoverflow, opencv docs, https://www.pyimagesearch.com, etc.
+
 import cv2
 import numpy as np
 import math
@@ -59,7 +61,7 @@ def printTime(s, t0, thr=0.0001):
     global gdebug
     t = timeit.default_timer() - t0
     if gdebug and t >= thr:
-        print ("TIME " + s + " = " + str(t))
+        print ("TIME %s = %f"%(s,t))
     return (t)
 
 
@@ -354,7 +356,7 @@ def openCam(cameraId):
         if not cam.isOpened():
             print ("All webcam failed. Quitting.")
             exit()
-    width, height = camSize(cam) 
+    width, height = camSize(cam)
     print ("Cam opened with size = " + str(width) + ", " + str(height))
     return (cam, width, height)
 
@@ -433,7 +435,7 @@ def calibrateCam(cam, console):
 
     console.reset()
     maxMotionThreshold = 30 # empirical: above this one can suspect global motion...
-    clipBox = (0,0), (width-1, height-1) # avoid boundary
+    clipBox = (0,0), (width-1, height-1) # everything
     nProbes = 20 # number of images to capture for calibration
     vals, images = getProbes(cam, nProbes, clipBox, console)
     avgVal = sum(vals)/float(len(vals))
@@ -606,27 +608,30 @@ def gaussian(x,x0,sigma):
   return np.exp(-np.power((x - x0)/sigma, 2.)/2.)
 
 
-def scoreFormula(candidate, active, snakeSize, jitterDist, laserIntensity, deviation):
+def scoreFormula(candidate, active, snakeSize, jitterDist, laserIntensity, predicted):
     """The best score will select the good pixel [x,y,val]"""
     # score should be a float >= 0.
     # A pixel will be selected if its score is >= 0.5
 
     intensity = candidate[2] / float(laserIntensity)
-    wellPredicted = gaussian(deviation, 0, jitterDist)
 
-    if snakeSize > 0:
-        return (intensity + wellPredicted)/2.
+    if predicted != None:
+        deviation =  np.linalg.norm(predicted - candidate[0:2])
+        # TODO should use the relative deviation wrt the distance.
+        wellPredicted = gaussian(deviation, 0, jitterDist)
+        #return wellPredicted
+        return (intensity + 5*wellPredicted)/6.
     else:
         return intensity + 0.1 # if there is no snake we need to give a bonus.
 
-def bestPixel(candidates, active, snakeSize, jitterDist, laserIntensity, deviation=0):
+def bestPixel(candidates, active, snakeSize, jitterDist, laserIntensity, predicted):
     """return the pixel with max score"""
     # avoid sorting, since only linear complexity is necessary here
     i = 0
     s = 0.
     i0 = 0
     while i < len(candidates):
-        ss = scoreFormula(candidates[i], active, snakeSize, jitterDist, laserIntensity, deviation)
+        ss = scoreFormula(candidates[i], active, snakeSize, jitterDist, laserIntensity, predicted)
         if ss > s:
             i0 = i
             s = ss
@@ -673,26 +678,25 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
             for c in candidates:
                 printd (c)
                 plotVal(show, c)
-
-        if snake.active:
-            # distance from last recorded point
-            d = np.linalg.norm(maxLoc - snake.last())
-            printd ("Distance = " + str(d))
-
-            # is the new point far from predicted?
+            
+        if not snake.empty():
+            # we compute the predicted position
             p = snake.predict()
             printd ("Predicted = " + str(p))
             if gdebug:
-                cv2.circle(show, (p[0], p[1]), 10, predictedColor, 1) 
-            dd =  np.linalg.norm(p - maxLoc)
-            printd ("Deviation from prediction = " + str(dd))
+                cv2.circle(show, (p[0], p[1]), 10, predictedColor, 1)
         else:
-            dd = cal.diag # ??
-            d = cal.jitterDist
+            p = None
 
         # We select the candidate with the best score
-        best, score = bestPixel(candidates, snake.active, snake.size, cal.jitterDist, cal.laserIntensity, deviation=dd)
+        best, score = bestPixel(candidates, snake.active, snake.size, cal.jitterDist, cal.laserIntensity, p)
         printd ("SCORE = " + str(score))
+        if snake.active:
+            dd =  np.linalg.norm(p - best[0:2])
+            printd ("Deviation from prediction = " + str(dd))
+            # distance from last recorded point. Not used yet.
+            d = np.linalg.norm(best[0:2] - snake.last())
+            printd ("Distance = " + str(d))
 
         if gdebug:
             thr = cal.motionThreshold + (best[2] - cal.motionThreshold)/3
@@ -730,7 +734,12 @@ def calibrateLoop(cam, console):
     while res == 0:
         (cal, res) = calibrateCam(cam, console)
         if res == 0:
-            print ("######### Calibration unsuccessful. Please try again. #########")
+            console.reset()
+            console.write ("## Calibration failed! Please try again ##")
+            console.write ("")
+            console.write ("Press any key")
+            console.show()
+            _ = cv2.waitKey(0)
     return (cal)
 
 
@@ -757,10 +766,12 @@ def webcamTracker(cameraId, debug):
     clipBox = (1,1), (width-2, height-2) # we remove 1 pix off every border
 
     # Flush webcam buffer
-    for i in range(10):
+    t0 = timeit.default_timer()
+    flush = 10
+    for i in range(flush):
         _ = readCam(cam)
-    
-    # initialization with dummy values:
+    print ("Avg FPS for reading cam=" + str(flush/(timeit.default_timer()-t0)))
+        
     background = []
     # The background is the image that will be substracted to the current image
     # in order to detect laser motion.
@@ -771,6 +782,8 @@ def webcamTracker(cameraId, debug):
         cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
     print "Press 'q' to exit"
     print "Press 'd' to toggle debugging"
+    startFPS = timeit.default_timer()
+    frameFPS = 0
     while True:        
         # Retrieve an image and Display it.
         t1 = timeit.default_timer()
@@ -790,10 +803,18 @@ def webcamTracker(cameraId, debug):
         console.write ("q = quit;  d = toggle debug mode")
         console.write ("active = " + str(snake.active))
         console.show_image(show)
-        dt = int(1000 * printTime("total", t1))
-        print (dt)
-        
-        key = cv2.waitKey(max(17-dt, 2))
+        printTime("total", t1)
+
+        # Compute FPS
+        frameFPS += 1
+        printd ("FPS = " + str(frameFPS/(timeit.default_timer() - startFPS)))
+        if frameFPS == 1000:
+            frameFPS = 0
+            startFPS = timeit.default_timer()
+
+
+        # Display console and wait for key.
+        key = cv2.waitKey(10)
         if key == ord('q'):
             break
         if key == ord('d'):
