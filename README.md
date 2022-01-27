@@ -1,5 +1,5 @@
 # laser
-Laser pointer tracker 
+Laser pointer tracker
 
 **laser** is a small library to detect the light beam of a laser pointer using a plain webcam.
 
@@ -27,11 +27,12 @@ optional arguments:
 
 ## Requirements
 
-python 2 and opencv 2.4 (these are the default packages in ubuntu 16), or opencv 3.0 (or higher) (ubuntu 18).
+python 3 and opencv >=3.
 ```
   sudo apt install python-opencv
   sudo apt install python-yaml
-```
+  ```
+  
 ## How it works
 
 The detection is based on an original algorithm, which combines a 'traditional' motion detection by background substraction with a new 'smoothness detector' which accounts for the fact that the hand motion is not completely erratic.
