@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*
 
-# Laser pointer detector, V1.
+# Laser pointer detector, V2.
 # ---------------------------
 
 # Use a webcam to detect the position of the light beam emitted by a laser
@@ -22,7 +22,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# This version uses python2 and opencv 2.4
+# This version uses python3 and opencv >=3
 
 # THANK YOU stackoverflow, opencv docs, https://www.pyimagesearch.com, etc.
 
