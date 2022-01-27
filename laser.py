@@ -6,7 +6,7 @@
 # Use a webcam to detect the position of the light beam emitted by a laser
 # pointer, or by any strongly focused lamp.
 
-# Copyright (C) 2018 San Vu Ngoc
+# Copyright (C) 2018-2022 San Vu Ngoc
 # Université de Rennes 1
 
 # This program is free software: you can redistribute it and/or modify
@@ -33,12 +33,11 @@ from matplotlib import pyplot as plt
 import yaml
 import timeit
 import argparse
-
-if cv2.__version__.startswith("3."):
-    cv2.CV_AA = cv2.LINE_AA
     
 # Global debugging variable
 gdebug = True
+
+print ("openCV version " + cv2.__version__)
 
 # BGR colors
 maxValColor = (0,255,230) # yellow
@@ -48,7 +47,8 @@ cropColor = (12,234,54) # green
 snakeColor = (5,200,160) # yellow-green
 
 # convert openCV color to mathplotlib color
-def colorPlt((b,g,r)):
+def colorPlt(c):
+    (b,g,r) = c
     return (np.array((r/255.0, g/255.0, b/255.0)))
     
 # Some debugging utilities
@@ -76,13 +76,13 @@ def diffMax(img1, img2, radius=2):
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
     # We blur the images by radius at least 3. For 640x480 webcam, 3 seems to
     # substancially improve laser detection.
-    radius = 2*(max(2, radius)/2)+1 # should be an odd number
+    radius = 2 * int((max(2, radius)) // 2) + 1 # should be an odd number
     gray1 = cv2.GaussianBlur(gray1, (radius, radius), 0)
     gray2 = cv2.GaussianBlur(gray2, (radius, radius), 0)
     h,w = gray1.shape
     diff = gray2.astype(int) - gray1.astype(int)
     imax = np.argmax(diff)
-    x, y = (imax % w, imax / w)
+    x, y = (imax % w, imax // w)
     maxVal = diff[y,x]
     maxLoc = (x,y)
     return (diff, maxVal, maxLoc)
@@ -162,7 +162,7 @@ class Console:
         printd ("[CONSOLE]: " + text)
         cv2.putText(self.cons, text, (self.leftmargin, self.hline + th),
                     self.font, scale, self.color, self.thickness,
-                    cv2.CV_AA, False)
+                    cv2.LINE_AA, False)
         self.hline = self.hline + th + baseVal
 
     def reset(self):
@@ -252,10 +252,10 @@ class Snake:
         """draw the snake on the image"""
         if self.size != 0:
             cv2.polylines(image, [self.visible()], False, snakeColor, 2,
-                          cv2.CV_AA)
+                          cv2.LINE_AA)
             if self.active:
                 p = self.last()
-                cv2.circle(image, (p[0], p[1]), 5, snakeColor, -1, cv2.CV_AA)
+                cv2.circle(image, (p[0], p[1]), 5, snakeColor, -1, cv2.LINE_AA)
 
 # Here we detect "global motion", which is when we think the change in the
 # image is too important to be due to the laser pointer.
@@ -279,7 +279,8 @@ def laserShape(diff, maxLoc, threshold, maxRadius=100, debug=True):
     printd("--------Laser shape---------(maxRadius=" + str(maxRadius) + ")---")
     x,y = maxLoc
     lowDiff = max(0, diff[y,x] - threshold)
-    printd ("maxLoc = " + str(maxLoc) + ", selecting from " + str(lowDiff) + " to " + str(diff[y,x]))
+    printd ("maxLoc = " + str(maxLoc) + ", selecting from " + str(lowDiff) +
+            " to " + str(diff[y,x]))
     left, top = x - maxRadius, y - maxRadius # can be negative
     gh,gw = diff.shape
     right, bottom = min(x + maxRadius + 1, gw), min(y + maxRadius + 1, gh)
@@ -298,10 +299,7 @@ def laserShape(diff, maxLoc, threshold, maxRadius=100, debug=True):
     # flag FLOODFILL_MASK_ONLY.
     seed = maxRadius + min(0, left), maxRadius +  min(0, top)
     printd ("Seed = " + str(seed))
-    if cv2.__version__.startswith("3."):
-        retval, _, mask, rect = cv2.floodFill(crop, mask, seed, 125, lowDiff, 255, cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | 4 | ( 255 << 8 ) )
-    else:
-        retval, rect = cv2.floodFill(crop, mask, seed, 125, lowDiff, 255, cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | 4 | ( 255 << 8 ) )
+    retval, _, mask, rect = cv2.floodFill(crop, mask, seed, 125, lowDiff, 255, cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | 4 | ( 255 << 8 ) )
     if debug:
         print ("floodFill retval (#of filled pixels) = " + str(retval))
         (rx,ry,rw,rh) = rect
@@ -364,7 +362,7 @@ def readCam(cam):
     "Read image from webcam."
     retval, img = cam.read()
     if not retval:
-        print "Cannot capture frame device"
+        print ("Cannot capture frame device")
         img = cv2.imread("webcam_error.jpeg")
     return (img)
 
@@ -465,9 +463,9 @@ def calibrateCam(cam, console):
     console.write ("(without stopping) inside the green box.")
     console.show()
     
-    radius = min(width, height) / 4
-    cx1, cy1 = width/2 - radius,     height/2 - radius
-    cx2, cy2 = width/2 + radius - 1, height/2 +  radius - 1
+    radius = min(width, height) // 4
+    cx1, cy1 = width//2 - radius,     height//2 - radius
+    cx2, cy2 = width//2 + radius - 1, height//2 +  radius - 1
     # we save (and crop) the last image of the previous probes
     emptyImg = images[-1][1][cy1:cy2,cx1:cx2]
 
@@ -515,9 +513,9 @@ def calibrateCam(cam, console):
         
         i +=  1
 
-    cv2.destroyWindow("Diff")
-    cv2.destroyWindow("Crop")
-    cv2.destroyWindow("Mask")
+    #cv2.destroyWindow("Diff")
+    #cv2.destroyWindow("Crop")
+    #cv2.destroyWindow("Mask")
     console.reset()
     
     printd ("Max intensity = " + str(maxi) + "=" + str(vals[imax]) + " at image #" + str(imax))
@@ -564,7 +562,9 @@ def calibrateCam(cam, console):
     cal.laserIntensity = avgVal
     return (cal, res)
 
-def insideBox((x,y), ((x1,y1), (x2,y2))):
+def insideBox(z, box):
+    (x,y) = z
+    ((x1,y1), (x2,y2)) = box
     """Check if position is inside box. Assumes x1<=x2 and y1<=y2."""
     return (x <= x2 and x >= x1 and y <= y2 and y >= y1)
 
@@ -615,7 +615,7 @@ def scoreFormula(candidate, active, snakeSize, jitterDist, laserIntensity, predi
 
     intensity = candidate[2] / float(laserIntensity)
 
-    if predicted != None:
+    if predicted is not None:
         deviation =  np.linalg.norm(predicted - candidate[0:2])
         # TODO should use the relative deviation wrt the distance.
         wellPredicted = gaussian(deviation, 0, jitterDist)
@@ -631,7 +631,8 @@ def bestPixel(candidates, active, snakeSize, jitterDist, laserIntensity, predict
     s = 0.
     i0 = 0
     while i < len(candidates):
-        ss = scoreFormula(candidates[i], active, snakeSize, jitterDist, laserIntensity, predicted)
+        ss = scoreFormula(candidates[i], active, snakeSize, jitterDist,
+                          laserIntensity, predicted)
         if ss > s:
             i0 = i
             s = ss
@@ -641,19 +642,19 @@ def bestPixel(candidates, active, snakeSize, jitterDist, laserIntensity, predict
 def plotVal(show, candidate, color=valColor, thickness=1):
     "draw a circle around the position with a radius proportional to the value"
     x,y = candidate[0],candidate[1]
-    size = max(0, int(candidate[2]/4))
-    cv2.circle(show, (x,y), size, color, thickness, cv2.CV_AA)
+    size = max(0, int(candidate[2]//4))
+    cv2.circle(show, (x,y), size, color, thickness, cv2.LINE_AA)
 
 # This is the main detection function
 def oneStepTracker(background, img, show, clipBox, snake, cal):
     global gdebug
     mask = []
     
-    if background == []:
+    if len(background) == 0:
         return (img, mask, 0)
     
     printd ("/------------------- new image --------------------\\")
-    diff, maxVal, maxLoc = diffMax(background, img, cal.laserDiameter/2)
+    diff, maxVal, maxLoc = diffMax(background, img, cal.laserDiameter//2)
     gm = globalMotion(diff, cal.motionThreshold)
     printd ("Global Motion  = " + str(gm))
     printd ("Max Intensity  = " + str(maxVal)) # between 0 and 255
@@ -689,7 +690,8 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
             p = None
 
         # We select the candidate with the best score
-        best, score = bestPixel(candidates, snake.active, snake.size, cal.jitterDist, cal.laserIntensity, p)
+        best, score = bestPixel(candidates, snake.active, snake.size,
+                                cal.jitterDist, cal.laserIntensity, p)
         printd ("SCORE = " + str(score))
         if snake.active:
             dd =  np.linalg.norm(p - best[0:2])
@@ -700,7 +702,9 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
 
         if gdebug:
             thr = cal.motionThreshold + (best[2] - cal.motionThreshold)/3
-            mask, _ = laserShape(diff, (best[0],best[1]), thr, maxRadius=cal.laserDiameter, debug=False)
+            mask, _ = laserShape(diff, (best[0],best[1]), thr,
+                                 maxRadius=int(cal.laserDiameter),
+                                 debug=False)
 
         if score >= 0.5:
             printd ("==> Adding new point to snake.")
@@ -780,8 +784,8 @@ def webcamTracker(cameraId, debug):
     dt = 0
     if debug:
         cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
-    print "Press 'q' to exit"
-    print "Press 'd' to toggle debugging"
+    print ("Press 'q' to exit")
+    print ("Press 'd' to toggle debugging")
     startFPS = timeit.default_timer()
     frameFPS = 0
     while True:        
@@ -829,8 +833,8 @@ def webcamTracker(cameraId, debug):
 
 
 if __name__ == "__main__":
-    print "Welcome to Laser by San Vu Ngoc, University of Rennes 1."
-    print "This program comes with ABSOLUTELY NO WARRANTY"
+    print ("Welcome to Laser by San Vu Ngoc, University of Rennes 1.")
+    print ("This program comes with ABSOLUTELY NO WARRANTY")
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action="store_true",
                         help="set debug mode")
