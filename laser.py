@@ -25,6 +25,9 @@
 # TODO conform to style:
 # https://www.python.org/dev/peps/pep-0008/
 
+# DEMO: use ztracker.py:
+# python3 ./ztracker.py
+
 import argparse
 import tempfile
 import os.path
