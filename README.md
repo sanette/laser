@@ -10,7 +10,7 @@ It works on any kind of non-moving background (it doesn't have to be white, or e
 It includes a calibration utility and a demo program.
 
 To launch the demo with webcam device #1:
-```python ./laser.py -camera 1```
+```python3 ./laser.py -camera 1```
 
 ![LASER](https://github.com/sanette/laser/blob/master/laser.png) 
 

@@ -62,13 +62,17 @@ USE_FFMPEG = False
 # Global debugging variable (can be modified)
 gdebug = True
 
+def set_debug(t):
+    global gdebug
+    gdebug = t
+
 # Remark: NO tuple pattern matching in python 3 anymore... :(
 # https://www.python.org/dev/peps/pep-3113/
 def color_plt(color):
     """convert openCV color to mathplotlib color"""
     b,g,r = color
     return (np.array((r/255.0, g/255.0, b/255.0)))
-    
+
 # Some debugging utilities
 def printd(s):
     global gdebug
@@ -112,7 +116,7 @@ def diff_max(img1, img2, radius=2):
     maxVal = diff[y,x]
     maxLoc = (x,y)
     return (diff, maxVal, maxLoc)
-        
+
 def get_angle(p1,p2):
     """angle in rad between 2 vectors (shape (2,)"""
     l1 = np.linalg.norm(p1)
@@ -152,12 +156,13 @@ class Console:
         self.image = np.zeros((h, w, 3), np.uint8)
         self.cons =  np.ones((textheight, w, 3), np.uint8) * 255
         self.total = np.zeros((h + textheight, w, 3), np.uint8)
-        
+
     def show(self):
         ih,iw,_ = self.image.shape
         th,tw,_ = self.cons.shape
         if iw != tw:
-            print ("Error text width " + str(tw) +" and image width " + str(iw) + "should be equal")
+            print ("Error: text width " + str(tw) +" and image width "
+                   + str(iw) + " should be equal.")
         self.total[0:ih, :] = self.image
         self.total[ih : ih+th, :] = self.cons
         cv2.imshow(self.name, self.total)
@@ -172,18 +177,24 @@ class Console:
         # slows it down...
         h,w,_ = image.shape
         if (w,h) != self.size:
-            print ("RESIZING " + str((w,h)) + " to " + str(self.size))
-            self.image = cv2.resize(image, self.size)
+            # keep ratio
+            ww,hh = self.size
+            if ww/hh > w/h:
+                w2, h2 = int(w*hh/h), hh
+            else:
+                w2, h2 = ww, int(h*ww/w)
+            print ("RESIZING " + str((w,h)) + " to " + str((w2,h2)))
+            self.image = cv2.resize(image, (w2,h2))
         else:
             self.image = image
-            
+
     def show_image(self, image):
         self.set_image(image)
         self.show()
 
     def wait_key(_, n):
         return(cv2.waitKey(n))
-               
+
     def write(self, text):
         """Write one line of text to the console and advance line"""
         (tw,th), baseVal = cv2.getTextSize(text, self.font, self.font_scale, self.thickness)
@@ -203,8 +214,26 @@ class Console:
         self.cons[:,:,:] = 255
         self.hline = self.topmargin
 
+    def move (self, x,y):
+        cv2.moveWindow(self.name, x, y)
+
     def close(self):
         cv2.destroyWindow(self.name)
+
+def polyline_gradient(image, pts, color):
+    """Draw a polyline with varying color from black to color"""
+    (b,g,r) = color
+    n = len(pts)
+    if n == 0:
+        return
+    p0 = pts[0]
+    print(p0)
+    for i in range(n-1):
+        x = ((i+1)/(n-1))
+        c = (int(x*b), int(x*g), int(x*r))
+        p1 = pts[i+1]
+        cv2.line(image, (p0[0], p0[1]), (p1[0], p1[1]), c, 2, cv2.LINE_AA)
+        p0 = p1
 
 class Snake:
     """Class for snake operations (and mouse. TODO move mouse to another class?)
@@ -236,7 +265,7 @@ class Snake:
             self.size = 0
             self.button_down = False
             self.click = False
-            
+
     def frame(_, point):
         return (point[1][0])
 
@@ -246,7 +275,7 @@ class Snake:
             return (-1)
         else:
             return (self.current_frame - self.frame(self.points[-1]))
-        
+
     def visible(self):
         """return the visible part"""
         start = len(self.points) - self.size
@@ -254,7 +283,7 @@ class Snake:
 
     def empty(self):
         return (self.size == 0)
-    
+
     def last(self):
         """return last point"""
         if self.size == 0:
@@ -280,15 +309,16 @@ class Snake:
         # about 5e-05 sec, incl drawing
         box = cv2.minAreaRect(self.visible())
         pts = np.array(cv2.boxPoints(box), dtype=int)
-        # draw the result on the image
-        cv2.polylines(image, [pts], True, (0,0,200), 1)
+        if gdebug:
+            # draw the result on the image
+            cv2.polylines(image, [pts], True, (0,0,200), 1)
         h,w,_ = image.shape
         return (cv2.contourArea(pts) / (h*w)) #plus rapide: utiliser box!
 
     def enclosing_circle(self):
         """center and radius of best enclosing circle"""
         return(cv2.minEnclosingCircle(self.visible()))  # → center, radius
-        
+
     def _target_locked(self, radius):
         # are we pointing at the same spot for long enough ?
         min_size = 8
@@ -302,7 +332,7 @@ class Snake:
                 return (False, None)
         else:
             return (False, None)
-               
+
     def predict(self):
         """predict the next point by 2nd order curvature approx"""
         # about 1e-04 sec, why so "slow"?
@@ -350,9 +380,10 @@ class Snake:
         else:
             s = self.size + 1
         self.size = s
-        if self.size == 1:
-            print ("(tentative)"),
-        print ("point #" + str(self.current_frame) + " = " + str(point))
+        if gdebug:
+            if self.size == 1:
+                print ("(tentative)"),
+            print ("point #" + str(self.current_frame) + " = " + str(point))
         # WARNING: for more safety, this point should be considered valid only
         # if snake size >= 2 (if one can afford to wait for another frame).
         if (not self.button_down) and self.target is not None:
@@ -370,7 +401,7 @@ class Snake:
                 else: # forget the target
                     self.target = None
                     self.click = False
-        
+
     def remove(self):
         """remove the first point = tail of the snake"""
         if self.size == 0:
@@ -401,10 +432,10 @@ class Snake:
             # considered 100% valid if it stays isolated.
             p = self.last()
             cv2.circle(image, (p[0], p[1]), 5, PREDICTED_COLOR, -1, cv2.LINE_AA)
-            
+
         elif self.size >= 1:
-            cv2.polylines(image, [self.visible()], False, color, 2,
-                          cv2.LINE_AA)
+            #cv2.polylines(image, [self.visible()], False, color, 2, cv2.LINE_AA)
+            polyline_gradient(image, self.visible(), color)
             if self.active:
                 p = self.last()
                 cv2.circle(image, (p[0], p[1]), 5, color, -1, cv2.LINE_AA)
@@ -415,7 +446,7 @@ class Snake:
 
 class Background:
     """Class for background accumulation"""
-    
+
     def __init__(self, length):
         self.length = length # max number of images
         self.empty = True
@@ -451,7 +482,7 @@ class Background:
 
     def close_window(_):
         cv2.destroyWindow("BACKGROUND")
-        
+
 # Here we detect "global motion", which is when we think the change in the
 # image is too important to be due to the laser pointer.
 #
@@ -499,17 +530,15 @@ def laserShape(diff, maxLoc, threshold, maxRadius=100, debug=True):
         print ("floodFill retval (#of filled pixels) = " + str(retval))
         (rx,ry,rw,rh) = rect
         cv2.rectangle(crop, (rx,ry), (rx+rw-1,ry+rh-1), (125,125,125))
-        cv2.namedWindow("Diff", cv2.WINDOW_NORMAL)
-        cv2.namedWindow("Crop", cv2.WINDOW_NORMAL)
-        cv2.namedWindow("Mask", cv2.WINDOW_NORMAL)
         cv2.imshow("Diff", np.absolute(diff).astype(np.uint8))
         cv2.imshow("Mask", mask)
         cv2.circle(crop, seed, 5, (150,22,56), 1)
         cv2.imshow("Crop", crop)
         print ("Found bounding box = " + str(rect))
-        print ("Press any key")
+        print ("Press any key (laserShape)")
         _ = cv2.waitKey(100) # 0
-        
+
+
     # find rotated box TODO USE THIS...
     (rx,ry,rw,rh) = rect
     clip = mask[ry:ry+rh+2,rx:rx+rw+2]
@@ -541,10 +570,10 @@ def laserShape(diff, maxLoc, threshold, maxRadius=100, debug=True):
             cv2.imshow("Mask", colorclip)
             print ("Press any key")
             _ = cv2.waitKey(100) # 0
-            
+
     else:
         printd ("ERROR: Cannot find laser pixels!")
-        
+
     return (mask, rect, angle)
 
 # Return a list of (nProbes-1) pairs of images [background, image], and the
@@ -657,17 +686,16 @@ class Calibration:
                 print(exc)
         cam.set(CAM_BRIGHTNESS, self.brightness)
         cam.set(CAM_CONTRAST, self.contrast)
-            
-# We run another pass on a recorded set of images. At this point this requires
-# user input. I'm thinking of making this more automatic.
+
+# We run another pass on a recorded set of images.
 def optimize(cal, images, clipBox, console):
     global gdebug
-    
+
     p1,p2 = clipBox
     w,h = cal.width, cal.height
 #    consoleHeight = 60
 #    console = np.zeros((consoleHeight, 2*w, 3), np.uint8)
-    
+
     snake = Snake(len(images))
     background = Background(1)
     print ("Please wait...")
@@ -682,7 +710,7 @@ def optimize(cal, images, clipBox, console):
             [x,y] = snake.last()
             cv2.line(show, (0,y), (w,y), MAXVAL_COLOR, 1)
             cv2.line(show, (x,0), (x,h), MAXVAL_COLOR, 1)
-        
+
         # we recompute the candidates (in order to optimize, we should use the
         # ones computed in oneStepTracker...)
         diff, maxVal, maxLoc = diff_max(pair[0], pair[1], cal.laserDiameter/2)
@@ -703,7 +731,7 @@ def optimize(cal, images, clipBox, console):
         cv2.rectangle(dual, p1, p2, CROP_COLOR)
         console.show_image(dual)
         _ = cv2.waitKey(5)
-        
+
         vals = cc[:,2]
         # if snake.size > 1:
         #     l = snake.lastn(2)
@@ -743,9 +771,11 @@ def changeSetting(cam, prop, name, keys, key):
     if key == ord(k2):
         cam.set(prop, cam.get(prop)+1.)
         print (name + "=" + str(cam.get(prop)))
-            
+
 def calibrateCam(cam, console):
     """Make a series of tests for calibrating laser and camera"""
+
+    global gdebug
 
     res = -1  # will get a positive value if calibration was done
 
@@ -772,17 +802,18 @@ def calibrateCam(cam, console):
         # 20 ==> 24% !
         # 100 ==> 14% but latency is visible
         # 500 ==> 2%
-        
+
         changeSetting(cam, CAM_BRIGHTNESS, "brightness", ('v','b'), key)
         changeSetting(cam, CAM_CONTRAST, "contrast", ('x','c'), key)
         changeSetting(cam, CAM_GAIN, "gain", ('f','g'), key)
-        
+
         if key == ord('q') or key == ord('s'): break
         if key == 27: raise SystemExit
     if key == ord('s'): # return default values
         printd ("Using default values")
+        console.reset ()
         return (Calibration(cam), res)
-        
+
     # We first check light stability (due to exterior lightings or camera
     # fluctations), image stability.
 
@@ -800,7 +831,7 @@ def calibrateCam(cam, console):
     avgVal = sum(vals)/float(len(vals))
     printd ('        Average intensity = ' + str(avgVal))
     cal.motionThreshold = int(avgVal + 0.5)
-    if cal.motionThreshold <= 8: # empirical... 
+    if cal.motionThreshold <= 8: # empirical...
         console.write ("* Light stability is good!")
     elif cal.motionThreshold >= maxMotionThreshold: #empirical...
         console.write ("# Light condition is not stable.")
@@ -824,7 +855,7 @@ def calibrateCam(cam, console):
     console.write ("and press 'q' while moving the laser pointer slowly")
     console.write ("(without stopping) inside the green box.")
     console.show()
-    
+
     radius = min(width, height) // 4
     cx1, cy1 = width//2 - radius,     height//2 - radius
     cx2, cy2 = width//2 + radius - 1, height//2 +  radius - 1
@@ -848,7 +879,12 @@ def calibrateCam(cam, console):
     imax = 0 # index of image with highest laser intensity
     maxi = 0 # max intensity
     i = 0
-    vals, locs, gms, diams = [], [], [], [] 
+    vals, locs, gms, diams = [], [], [], []
+    if gdebug:
+        cv2.namedWindow("Diff", cv2.WINDOW_NORMAL)
+        cv2.namedWindow("Crop", cv2.WINDOW_NORMAL)
+        cv2.namedWindow("Mask", cv2.WINDOW_NORMAL)
+
     for [bkg, img] in images:
 
         # globalMotion
@@ -867,23 +903,24 @@ def calibrateCam(cam, console):
             maxi, imax = maxVal, i
         printd ("   maxVal = " +  str(maxVal))
         printd ("   maxLoc = " +  str(maxLoc))
-        
+
         # shape in green box
         # TODO: use more that laserDiameter
         thr = cal.motionThreshold + (maxVal - cal.motionThreshold)/3
         # ou bien thr = motionThreshold ??
-        _, (_,_,w,h), _ = laserShape(cdiff, maxLoc, thr, debug=True)
+        _, (_,_,w,h), _ = laserShape(cdiff, maxLoc, thr, debug=gdebug)
         diams.append(min(w,h))
-        
+
         i +=  1
 
-    cv2.destroyWindow("Diff")
-    cv2.destroyWindow("Crop")
-    cv2.destroyWindow("Mask")
     console.reset()
-    
+    if gdebug:
+        cv2.destroyWindow("Diff")
+        cv2.destroyWindow("Crop")
+        cv2.destroyWindow("Mask")
+
     printd ("Max intensity = " + str(maxi) + "=" + str(vals[imax]) + " at image #" + str(imax))
-    
+
     avgVal = sum(vals)/float(len(vals))
     printd ('        Average intensity = ' + str(avgVal))
     if avgVal - cal.motionThreshold >= 30:
@@ -917,14 +954,9 @@ def calibrateCam(cam, console):
     gms.append(cal.globalMotionThreshold)
     cal.globalMotionThreshold = 5 * max(gms) #?? pourquoi 5, à vérifier
     printd ('+ We choose globalMotionThreshold = '+  str(cal.globalMotionThreshold))
-    
-    if gdebug:
-        cv2.destroyWindow("Crop")
-        cv2.destroyWindow("Mask")
-        cv2.destroyWindow("Diff")
 
     optimize(cal, images, clipBox, console)
-        
+
     cal.laserIntensity = avgVal
     return (cal, res)
 
@@ -937,7 +969,7 @@ def insideBox(z, box):
 def maxValPos(gray, threshold, nmax):
     """from the gray image, return an array of [x,y, value] with the higher values, of max length nmax"""
 
-    t0 = timeit.default_timer() 
+    t0 = timeit.default_timer()
     selecty, selectx = np.where(gray >= threshold)
     # "np.where" is quite slow... about 10x more than "val=" or "sort" below...
     # typically 0.001 sec for 200 size
@@ -946,13 +978,13 @@ def maxValPos(gray, threshold, nmax):
     val = gray[gray >= threshold] # let's hope the order is the same as that
                                   # was used for selectx/y...
     print_time ("val", t0)
-    
+
     if len(selectx) <= nmax:
         t0 = timeit.default_timer()
         res = np.column_stack((selectx,selecty,val))
         print_time ("stack", t0)
         return res
-    
+
     else: # we need to sort... (this case should be avoided for performance)
         t0 = timeit.default_timer()
         # we create a structured array in order to sort by the value :
@@ -982,7 +1014,7 @@ def scoreFormula(candidate, active, snakeSize, jitterDist, laserIntensity, predi
     """The best score will select the good pixel [x,y,val]"""
     # score should be a float >= 0.
     # A pixel will be selected if its score is >= 0.5
-    
+
     # Cases where a pixel should be clearly selected (score>=1)
     # (after checking globalMotion):
     #  1. intensity (0-255) is > 40 (bright pointer) # this can be detected maybe
@@ -1033,7 +1065,7 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
     if background.empty:
         background.add(img)
         return (mask, 0)
-    
+
     printd ("/------------------- new image --------------------\\")
     diff, maxVal, maxLoc = diff_max(background.mean(), img, cal.laserDiameter//2)
     gm = globalMotion(diff, cal.motionThreshold)
@@ -1043,9 +1075,9 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
     if gdebug:
         (x,y) = maxLoc
         plotVal(show, [x,y,maxVal], color=MAXVAL_COLOR)
-    
+
     newPoint = False
-    
+
     # We try to detect the pointer only if there is no global motion of the
     # image:
     if maxVal > cal.motionThreshold and gm < cal.globalMotionThreshold and insideBox(maxLoc, clipBox):
@@ -1060,7 +1092,7 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
             for c in candidates:
                 printd (c)
                 plotVal(show, c)
-            
+
         if not snake.empty():
             # we compute the predicted position
             p = snake.predict()
@@ -1088,7 +1120,6 @@ def oneStepTracker(background, img, show, clipBox, snake, cal):
             # ou bien thr = motionThreshold ?
             mask, rect, angle = laserShape(diff, (best[0],best[1]), thr,
                                            maxRadius=int(cal.laserDiameter), debug=False)
-
 
         if score >= 0.5:
             printd ("==> Adding new point to snake.")
@@ -1155,7 +1186,7 @@ def webcamTracker(camera_id, debug):
     gdebug = debug
     laserWindow = "Laser"
     tmpdir = tempfile.mkdtemp(prefix='laser_')
-    
+
     # tunable variable
     snake_max_size = 10
     bkgLen = 10
@@ -1170,13 +1201,13 @@ def webcamTracker(camera_id, debug):
         cal = Calibration(cam)
         print ("Loading calibration data")
         cal.load(cam, "%s/calibration.yml"%os.path.dirname(camera_id))
-        
+
     console.write ("------------------------------------------")
     console.write (" Press any key to start the tracking session")
     console.write ("------------------------------------------")
     console.show()
     _ = cv2.waitKey(0)
-    
+
     clipBox = (1,1), (width-2, height-2) # we remove 1 pix off every border
 
     # Flush webcam buffer
@@ -1184,11 +1215,11 @@ def webcamTracker(camera_id, debug):
     flushSize = 10
     flush(cam, flushSize)
     printd ("Avg FPS for reading cam=" + str(flushSize/(timeit.default_timer()-t0)))
-        
+
     background = Background(bkgLen)
     # The background is the image that will be substracted to the current image
     # in order to detect laser motion.
-    
+
     snake = Snake(snake_max_size)
     if debug:
         cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
@@ -1199,7 +1230,7 @@ def webcamTracker(camera_id, debug):
     save = False
     startSave = 0
     time_profile = []
-    while True:        
+    while True:
         # Retrieve an image and Display it.
         t1 = timeit.default_timer()
         img = readCam(cam)
@@ -1210,7 +1241,11 @@ def webcamTracker(camera_id, debug):
         t0 = timeit.default_timer()
         mask, _ = oneStepTracker(background, img, show, clipBox, snake, cal)
         tt0 = print_time("One Step", t0)
-        
+
+        if not snake.empty ():
+            point = snake.last ()
+            print (str(point))
+
         if mask != []:
             cv2.imshow("Laser", mask)
 
@@ -1241,7 +1276,7 @@ def webcamTracker(camera_id, debug):
             startFPS = timeit.default_timer()
 
         if gdebug:
-            time_profile.append(np.array([tt0,tt1,fps]))    
+            time_profile.append(np.array([tt0,tt1,fps]))
 
         # Display console and wait for key.
         idle_time = (snake.current_frame - snake.last_active_frame)/fps
@@ -1265,7 +1300,7 @@ def webcamTracker(camera_id, debug):
             console.write ("PAUSED. Press any key to resume")
             console.show()
             _ = cv2.waitKey(0)
-        
+
     console.close()
     print ("---- Data saved in %s"%tmpdir)
     if gdebug:
@@ -1294,7 +1329,7 @@ if __name__ == "__main__":
     webcamTracker (camera_id, debug)
     print ("Bye")
 
-    
+
 '''
 0. CV_CAP_PROP_POS_MSEC Current position of the video file in milliseconds.
 1. CV_CAP_PROP_POS_FRAMES 0-based index of the frame to be decoded/captured next.
@@ -1336,16 +1371,15 @@ def test():
         a[randint(0,n-1), randint(0,n-1)] = randint(1,100)
 
     for repeat in range(5):
-        
+
         # test argwhere
-        t=timeit.default_timer() 
+        t=timeit.default_timer()
         for i in range(nt):
             res = np.argwhere(a > 0)
         print_time("argwhere",t,thr=0)
 
         # test nonzero
-        t=timeit.default_timer()  
+        t=timeit.default_timer()
         for i in range(nt):
             res = np.transpose(np.nonzero(a > 0))
         print_time("nonzero",t,thr=0)
-
