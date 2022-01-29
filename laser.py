@@ -27,6 +27,8 @@
 
 # DEMO: use ztracker.py:
 # python3 ./ztracker.py
+# (See README.md)
+
 
 import argparse
 import tempfile
@@ -245,9 +247,9 @@ class Snake:
     like in the classic 'snake' game.
     """
 
-    def __init__(self, snakeMaxSize):
-        self.maxSize = snakeMaxSize
-        self.points = np.zeros((snakeMaxSize,2,2), dtype=int)
+    def __init__(self, snake_max_size):
+        self.maxSize = snake_max_size
+        self.points = np.zeros((snake_max_size,2,2), dtype=int)
         # we start from the end of the array... don't ask why.
         # points[i][0] = point with index i
         # points[i][1][0] = frame number when point was added
@@ -392,7 +394,7 @@ class Snake:
         if (not self.button_down) and self.target is not None:
             d = np.linalg.norm([self.target[0],self.target[1]] - point)
             age = self.current_frame - self.target_frame
-            print ("TARGET dist = %f, age = %d"%(d, age))
+            printd ("TARGET dist = %f, age = %d"%(d, age))
             if age > 25: # TODO use FPS instead of 25
                 # then we forget about the target
                 self.target = None
@@ -584,11 +586,11 @@ def laserShape(diff, maxLoc, threshold, maxRadius=100, debug=True):
 
 # Return a list of (nProbes-1) pairs of images [background, image], and the
 # list of maxVals
-def getProbes(cam, nProbes, clipBox, console, drawFn=None, bkgLen=10):
+def getProbes(cam, nProbes, clipBox, console, drawFn=None, bkg_len=10):
     # cf webcamTracker for explanation of the variables
     vals = []
     images = []
-    background = Background(bkgLen)
+    background = Background(bkg_len)
     cal = Calibration(cam)
     snake = Snake(nProbes-1)
     printd ("Please wait...")
@@ -1184,7 +1186,130 @@ def plot_times(profile):
     plt.legend()
     plt.show()
 
+# Utility function for opening cam and continuously tracking the
+# laser.  The laser coordinates (or the full "snake") are given to the
+# user application "app". See below "sample_app"
+def main_loop(camera_id, app, snake_max_size = 10, bkg_len = 10, sleep_time = 10):
+# sleep_time: time of inactivity in seconds before "sleep state"
+# bkg_len: number of backgrounds used for averaging
+    
+    global gdebug
 
+    tmpdir = tempfile.mkdtemp(prefix='laser_')
+
+    console = Console("Console", (640,480), 240)
+    cam, width, height = openCam(camera_id)
+    if isinstance(camera_id, int):
+        cal = calibrateLoop(cam, console)
+        cal.save("%s/calibration.yml"%tmpdir)
+    else:
+        cal = Calibration(cam)
+        print ("Loading calibration data")
+        cal.load(cam, "%s/calibration.yml"%os.path.dirname(camera_id))
+
+    console.write ("------------------------------------------")
+    console.write (" Press any key to start the tracking session")
+    console.write ("------------------------------------------")
+    console.show()
+    _ = console.wait_key(0)
+    
+    clipBox = (1,1), (width-2, height-2) # we remove 1 pix off every border
+
+    # Flush webcam buffer
+    t0 = timeit.default_timer()
+    flushSize = 10
+    flush(cam, flushSize)
+    printd ("Avg FPS for reading cam=" + str(flushSize/(timeit.default_timer()-t0)))
+        
+    background = Background(bkg_len)
+    # The background is the image that will be substracted to the current image
+    # in order to detect laser motion.
+    
+    snake = Snake(snake_max_size)
+    print ("Press 'q' to exit")
+    print ("Press 'd' to toggle debugging")
+    startFPS = timeit.default_timer()
+    frame_count = 0
+    save = False
+    startSave = 0
+    time_profile = []
+    while True:
+        # Retrieve an image and Display it.
+        t1 = timeit.default_timer()
+        img = readCam(cam)
+        snake.next_frame()
+        show = img.copy() # this is the console image where we can draw.
+
+        # THIS IS THE MAIN DETECTION STEP:
+        t0 = timeit.default_timer()
+        mask, _ = oneStepTracker(background, img, show, clipBox, snake, cal)
+        tt0 = print_time("One Step", t0)
+
+        app(snake)
+
+        if mask != []:
+            printd ("There is some mask")
+            #cv2.imshow("Laser", mask)
+
+        # We display the active status in the console.
+        console.reset()
+        if gdebug:
+            console.write ("Frame #%u"%snake.current_frame)
+        console.write ("q = quit; p = pause; d = toggle debug mode")
+        if save:
+            console.write ("Saving frame #%u in %s"%(snake.current_frame,tmpdir))
+            console.write ("s = stop saving")
+            cv2.imwrite ("%s/frame_%07d.jpg"%(tmpdir,snake.current_frame - startSave), img)
+        else:
+            console.write ("s = save all frames")
+        console.write ("active = " + str(snake.active))
+        console.write("button down = " + str(snake.button_down))
+        if snake.click:
+            console.write("==> Click! <==")
+        console.show_image(show)
+        tt1 = print_time("total", t1)
+
+        # Compute FPS
+        frame_count += 1
+        fps = frame_count/(timeit.default_timer() - startFPS)
+        printd ("FPS = %f"%fps)
+        if frame_count == 1000:
+            frame_count = 0
+            startFPS = timeit.default_timer()
+
+        if gdebug:
+            time_profile.append([tt0,tt1,fps])   
+
+        # Display console and wait for key.
+        idle_time = (snake.current_frame - snake.last_active_frame)/fps
+        dt = (250 if idle_time > sleep_time else 50 if snake.size == 0 else 10)
+        key = console.wait_key(dt)
+        if key == ord('q'):
+            break
+        if key == ord('d'):
+            gdebug = not gdebug
+            if not gdebug:
+                background.close_window()
+        if key == ord('s'):
+            save = not save
+            if save:
+                startSave = snake.current_frame
+        if key == ord('p'):
+            console.write ("PAUSED. Press any key to resume")
+            console.show()
+            _ = console.wait_key(0)
+        
+    console.close()
+    print ("---- Data saved in %s"%tmpdir)
+    if gdebug:
+        plot_times(time_profile)
+
+def sample_app(snake):
+    """Sample application for passing as argument to main_loop"""
+    if not snake.empty ():
+        point = snake.last ()
+        print (str(point))
+    
 
 '''
 0. CV_CAP_PROP_POS_MSEC Current position of the video file in milliseconds.
