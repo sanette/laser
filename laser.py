@@ -423,6 +423,9 @@ class Snake:
                     self.target_frame = self.current_frame
             self.size = self.size - 1
 
+    def reset_click(self):
+        self.click = False
+
     def draw(self, image):
         """draw the snake on the image"""
         color = (BUTTONDOWN_COLOR if self.button_down else SNAKE_COLOR)
@@ -1178,156 +1181,6 @@ def plot_times(profile):
     plt.legend()
     plt.show()
 
-# ------------------------------------------
-# stand-alone tracker for demo and debugging
-# ------------------------------------------
-def webcamTracker(camera_id, debug):
-    global gdebug
-    gdebug = debug
-    laserWindow = "Laser"
-    tmpdir = tempfile.mkdtemp(prefix='laser_')
-
-    # tunable variable
-    snake_max_size = 10
-    bkgLen = 10
-    sleep_time = 10 # time of inactivity in seconds before "sleep state"
-
-    console = Console("Console", (640,480), 240)
-    cam, width, height = openCam(camera_id)
-    if isinstance(camera_id, int):
-        cal = calibrateLoop(cam, console)
-        cal.save("%s/calibration.yml"%tmpdir)
-    else:
-        cal = Calibration(cam)
-        print ("Loading calibration data")
-        cal.load(cam, "%s/calibration.yml"%os.path.dirname(camera_id))
-
-    console.write ("------------------------------------------")
-    console.write (" Press any key to start the tracking session")
-    console.write ("------------------------------------------")
-    console.show()
-    _ = cv2.waitKey(0)
-
-    clipBox = (1,1), (width-2, height-2) # we remove 1 pix off every border
-
-    # Flush webcam buffer
-    t0 = timeit.default_timer()
-    flushSize = 10
-    flush(cam, flushSize)
-    printd ("Avg FPS for reading cam=" + str(flushSize/(timeit.default_timer()-t0)))
-
-    background = Background(bkgLen)
-    # The background is the image that will be substracted to the current image
-    # in order to detect laser motion.
-
-    snake = Snake(snake_max_size)
-    if debug:
-        cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
-    print ("Press 'q' to exit")
-    print ("Press 'd' to toggle debugging")
-    startFPS = timeit.default_timer()
-    frame_count = 0
-    save = False
-    startSave = 0
-    time_profile = []
-    while True:
-        # Retrieve an image and Display it.
-        t1 = timeit.default_timer()
-        img = readCam(cam)
-        snake.next_frame()
-        show = img.copy() # this is the console image where we can draw.
-
-        # THIS IS THE MAIN DETECTION STEP:
-        t0 = timeit.default_timer()
-        mask, _ = oneStepTracker(background, img, show, clipBox, snake, cal)
-        tt0 = print_time("One Step", t0)
-
-        if not snake.empty ():
-            point = snake.last ()
-            print (str(point))
-
-        if mask != []:
-            cv2.imshow("Laser", mask)
-
-        # We display the active status in the console.
-        console.reset()
-        if gdebug:
-            console.write ("Frame #%u"%snake.current_frame)
-        console.write ("q = quit; p = pause; d = toggle debug mode")
-        if save:
-            console.write ("Saving frame #%u in %s"%(snake.current_frame,tmpdir))
-            console.write ("s = stop saving")
-            cv2.imwrite ("%s/frame_%07d.jpg"%(tmpdir,snake.current_frame - startSave), img)
-        else:
-            console.write ("s = save all frames")
-        console.write ("active = " + str(snake.active))
-        console.write("button down = " + str(snake.button_down))
-        if snake.click:
-            console.write("==> Click! <==")
-        console.show_image(show)
-        tt1 = print_time("total", t1)
-
-        # Compute FPS
-        frame_count += 1
-        fps = frame_count/(timeit.default_timer() - startFPS)
-        printd ("FPS = %f"%fps)
-        if frame_count == 1000:
-            frame_count = 0
-            startFPS = timeit.default_timer()
-
-        if gdebug:
-            time_profile.append(np.array([tt0,tt1,fps]))
-
-        # Display console and wait for key.
-        idle_time = (snake.current_frame - snake.last_active_frame)/fps
-        dt = (250 if idle_time > sleep_time else 50 if snake.size == 0 else 10)
-        key = cv2.waitKey(dt)
-        #time.sleep(dt/1000.)
-        if key == ord('q'):
-            break
-        if key == ord('d'):
-            gdebug = not gdebug
-            if gdebug:
-                cv2.namedWindow(laserWindow, cv2.WINDOW_NORMAL)
-            else:
-                cv2.destroyWindow(laserWindow)
-                cv2.destroyWindow("BACKGROUND")
-        if key == ord('s'):
-            save = not save
-            if save:
-                startSave = snake.current_frame
-        if key == ord('p'):
-            console.write ("PAUSED. Press any key to resume")
-            console.show()
-            _ = cv2.waitKey(0)
-
-    console.close()
-    print ("---- Data saved in %s"%tmpdir)
-    if gdebug:
-        background.close_window()
-        plot_times(time_profile)
-
-
-if __name__ == "__main__":
-    print ("Welcome to Laser by San Vu Ngoc, University of Rennes 1.")
-    print ("This program comes with ABSOLUTELY NO WARRANTY")
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--debug", action="store_true",
-                        help="set debug mode")
-    parser.add_argument("-c", "--camera", type=int, help="set camera device id")
-    parser.add_argument("-i", "--input", help="load frames from specified directory instead of camera (ignored if camera is specified)")
-    args = parser.parse_args()
-    debug = args.debug
-    input_dir = args.input
-    camera_id = args.camera
-    if camera_id is None:
-        if input_dir is None:
-            camera_id = -1
-        else:
-            camera_id = input_dir + "/frame_%07d.jpg"  #TODO put this in a variable
-
-    webcamTracker (camera_id, debug)
-    print ("Bye")
 
 
 '''
