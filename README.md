@@ -16,7 +16,7 @@ white, or even uniform).
 It includes a calibration utility and a demo program.
 
 To launch the demo with webcam device #1:
-```python3 ./ztracker.py -camera 1```
+```python3 ./ztracker.py --camera 1```
 
 ![LASER](https://github.com/sanette/laser/blob/master/laser.png) 
 
