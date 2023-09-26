@@ -96,7 +96,7 @@ def view_color(c): # not used
     image = np.zeros((100,100,3), np.uint8)
     image[:,:] = c
     cv2.imshow("Color", image)
-    _ = cv2.waitKey(0)
+    print(cv2.waitKey(0))
     cv2.destroyWindow("Color")
 
 
@@ -401,7 +401,7 @@ class Snake:
                 self.click = False
             elif self.size >= 2:
                 if d < self.target_radius:
-                    print ("*** MOUSE BUTTON DOWN ***")
+                    printd ("*** MOUSE BUTTON DOWN ***")
                     self.button_down = True
                 else: # forget the target
                     self.target = None
@@ -418,7 +418,7 @@ class Snake:
             # même...
             if (self.button_down and self.target is not None and
                     np.linalg.norm([self.target[0],self.target[1]] - self.last()) < self.target_radius):
-                print ("-----------CLICK! " + str(self.target) +  " ----------")
+                printd ("-----------CLICK! " + str(self.target) +  " ----------")
                 self.click = True
                 self.button_down = False
             elif self.target is None:
@@ -621,11 +621,11 @@ def openCam(camera_id, cam_api=cv2.CAP_V4L):
         print ("Trying another one...")
         cam = cv2.VideoCapture(-1)
         if not cam.isOpened():
-            if cam_api == cv.CAP_ANY:
+            if cam_api == cv2.CAP_ANY:
                 print ("All webcam failed. Quitting.")
                 exit()
             else:
-                openCam(camera_id, cam_api=cv.CAP_ANY)
+                openCam(camera_id, cam_api=cv2.CAP_ANY)
     width, height = camSize(cam)
     print ("Cam opened with size = " + str(width) + ", " + str(height))
     return (cam, width, height)
@@ -1245,8 +1245,6 @@ def main_loop(camera_id, app, snake_max_size = 10, bkg_len = 10, sleep_time = 10
         mask, _ = oneStepTracker(background, img, show, clipBox, snake, cal)
         tt0 = print_time("One Step", t0)
 
-        app(snake)
-
         if mask != []:
             printd ("There is some mask")
             #cv2.imshow("Laser", mask)
@@ -1267,6 +1265,10 @@ def main_loop(camera_id, app, snake_max_size = 10, bkg_len = 10, sleep_time = 10
         if snake.click:
             console.write("==> Click! <==")
         console.show_image(show)
+
+        # Run the user app
+        app(snake)
+        
         tt1 = print_time("total", t1)
 
         # Compute FPS
