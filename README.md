@@ -35,8 +35,8 @@ optional arguments:
 
 python 3 and opencv >=3.
 ```
-  sudo apt install python-opencv
-  sudo apt install python-yaml
+  sudo apt install python3-opencv
+  sudo apt install python3-yaml
   ```
   
 ## How it works
